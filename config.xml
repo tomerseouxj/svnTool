@@ -1,0 +1,69 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<root>
+	<!--
+	username svn账号
+	password
+	readPath
+	savePath 有更新的文件另存路径
+	vesionPath 生成的版本号路径
+	svnPath SVN路径
+	versionNote svn版本纪录路径
+	svnEqualPath
+	initialVesion 基础版本号,没有往史版本,则以此版本为基础版本进行比较
+	-->
+
+	<platform>
+		<!--竖版h5-->
+		<item id="vH5_2.0" name="竖版h5[需要点击同步过渡服.bat文件才能打版本]">
+			<username>zhoujian</username>
+			<password>zhoujian</password>
+			<!--源目录-->
+			<readPath>E:\JAVA\project\s1\client\transitweb\</readPath>
+			<!--对比后新增文件的目标-->
+			<savePath>E:\JAVA\project\s1\client\transitweb\target\</savePath>
+			<!--文件对应版本号-->
+			<vesionPath>E:\JAVA\project\s1\client\transitweb\target\version\</vesionPath>
+			<!--版本对比记录-->
+			<versionNote>E:\JAVA\project\s1\client\transitweb\target\</versionNote>
+			<!--svn-->
+			<svnPath>svn://192.168.23.2/zhuque/client/s3_vertical/transitweb/</svnPath>
+			<!--初始版本号-->
+			<initialVesion>4469</initialVesion>
+			<!--目标文件根目录-->
+			<rootPath>res</rootPath>
+		</item>
+	</platform>
+	<!--
+		exc="1" 表示排除文件或文件夹（文件夹最后带/斜杠）如：index.html或    res/sound/
+		share="1" 表示该文件夹里所有json和对应的png文件一个版本号，如：boosFootEffect.json和boosFootEffect_0.png；commonSheet.json和commonSheet.png；atkAddFont.fnt和atkAddFont.png
+		dir="1" 表示下一级子文件夹或子文件各一个版本号，如：role；exclude表示该目录下的文件单独版本号，一个文件一个版本号，如：packer/，多个分号隔开
+	-->
+	<versionTemplate>
+		<item exc='1'>index.html</item>
+		<item exc='1'>favicon.ico</item>
+		<item exc='1'>res/atlas/.rec</item>
+		<item exc='1'>libs/jszip.js</item>
+		<item exc='1'>libs/laya.core.js</item>
+		<item exc='1'>libs/protobuf.js</item>
+		<item exc='1'>libs/worker.js</item>
+		<item exc='1'>libs/bytebuffer.js</item>
+		<item exc='1'>libs/laya.ani.js</item>
+		<item exc='1'>libs/laya.d3.js</item>
+		<item exc='1'>libs/laya.html.js</item>
+		<item exc='1'>libs/laya.physics.js</item>
+		<item exc='1'>libs/laya.physics3D.js</item>
+		<item exc='1'>libs/laya.physics3D.runtime.js</item>
+		<item exc='1'>libs/laya.ui.js</item>
+		<item exc='1'>libs/dexie.js</item>
+		
+		<item share="1">/res/movie/</item>
+		<item share="1">/res/movie/emotion/</item>
+		<item share="1">/res/nomovie/</item>
+		<item share="1">/res/atlas/view/</item>
+		<item share='1'>/res/sound/</item>
+		
+		<item dir='1'>libs/min/</item>
+		<item dir='1'>js/</item>
+		<item dir="1" exclude="maps.dba">res/map/</item>
+	</versionTemplate>
+</root>
