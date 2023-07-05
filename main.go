@@ -33,7 +33,19 @@ var (
 	ErrorLogger   *log.Logger
 )
 
-func main() {
+func myExit() {
+	fmt.Println("按任意键退出")
+	fmt.Scanln()
+}
+
+func start() {
+	defer func() {
+		err := recover()
+		if err != nil {
+			ErrorLogger.Println(err)
+			myExit()
+		}
+	}()
 	// 初始化日志
 	file, err := os.OpenFile("logs.txt", os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0666)
 	if err != nil {
@@ -74,6 +86,7 @@ func main() {
 	if err != nil {
 		ErrorLogger.Fatalf("InitialVesionNote error: %v", err)
 	}
+	// 将versions根据index排序
 	lastVersionData := versions.VersionItems[0]
 	lastVersionId := lastVersionData.Id
 	lastVersion, err := strconv.Atoi(lastVersionData.Version)
@@ -105,6 +118,7 @@ func main() {
 	}
 	if len(svnXmlLogs.Logentry) == 0 {
 		fmt.Printf("没有新版本\n")
+		myExit()
 		return
 	}
 
@@ -114,9 +128,10 @@ func main() {
 		ErrorLogger.Fatalf("get svn root error: %v", err)
 	}
 	fmt.Printf("svn root: %v\n", svnRoot)
+	svnRootSub := cfg.SvnPath[len(svnRoot):]
 
 	now := time.Now()
-	endVersion := svnXmlLogs.Logentry[0].Revision
+	endVersion := svnXmlLogs.Logentry[len(svnXmlLogs.Logentry)-1].Revision
 	timeStr2 := now.Format("20060102")
 	idStr := endVersion + "_" + timeStr2
 	fmt.Printf("本次版本号id: %v\n\n", idStr)
@@ -125,35 +140,69 @@ func main() {
 	shareMap := make(map[string]*list.List)
 	dirMap := make(map[string]DirItem)
 	increaseMap := make(map[string]bool)
+	totalVersion := ""
 
 	// 解析svn日志，更新修改的版本号，并拷贝文件到指定目录
 	for _, svnXmlLog := range svnXmlLogs.Logentry {
 		fmt.Printf("解析版本号：%v\n", svnXmlLog.Revision)
+		totalVersion += svnXmlLog.Revision + ","
 		for _, path := range svnXmlLog.Paths {
 			if path.Kind != "file" {
 				continue
 			}
+			fmt.Printf("开始处理文件：%v\n", path.Path)
 
 			fnArr := strings.Split(path.Path, "/"+cfg.RootPath+"/")
-			fnPath := "/" + cfg.RootPath + "/" + fnArr[1] // /res/xxx/xxx/xxx.png
+			var fnA, fnPath string
+			if len(fnArr) > 1 {
+				fnA = path.Path[len(svnRootSub):]
+				fnPath = "/" + fnA // /res/xxx/xxx/xxx.png
+			} else {
+				fnA = path.Path[len(svnRootSub):]
+				fnPath = fnA
+			}
 
 			if path.Action == "D" { // 删除文件，不用管
 				fmt.Printf("删除文件：%v\n", fnPath)
 				continue
 			}
 
-			isNew := path.Action == "M" || path.Action == "R"
-			if !isNew {
-				if _, ok := increaseMap[fnPath]; ok { // 该文件是增量文件，不作处理
-					continue
+			// 忽略文件
+			continueFlag := false
+			for _, v := range data.VersionTemplate[0].TemplateItems {
+				if v.Exc == "1" {
+					if fnA == v.Item { // 此文件不作处理
+						continueFlag = true
+						break
+					}
 				}
-			} else {
-				increaseMap[fnPath] = true
+			}
+			if continueFlag {
+				fmt.Printf("忽略文件：%v\n", fnPath)
+				continue
 			}
 
 			idx := strings.LastIndex(fnPath, "/")
-			fnPathPrefix := fnPath[:idx] // res及其下的路径
-			fn := fnPath[idx+1:]         // 文件名
+			var fnPathPrefix, fn string
+			if idx == -1 {
+				fnPathPrefix = ""
+				fn = fnPath
+			} else {
+				fnPathPrefix = fnPath[:idx] // res及其下的路径
+				fn = fnPath[idx+1:]         // 文件名
+			}
+
+			isNew := path.Action == "A" // path.Action == "M" || path.Action == "R"
+			if isNew {
+				// verMap存在该key，也默认该文件为新文件
+				a := fnPathPrefix[1:] + "/"
+				if _, ok := verMap[a]; ok {
+					isNew = false
+				}
+				if strings.Index(fnPathPrefix, "map/400") > 0 {
+					fmt.Printf("map/400文件：%v\n", fnPathPrefix)
+				}
+			}
 
 			idx2 := strings.LastIndex(fn, "_")
 			var fnPrefix string // 文件名前缀
@@ -163,17 +212,8 @@ func main() {
 				fnPrefix = fn
 			}
 
-			continueFlag := false
+			continueFlag = false
 			for _, v := range data.VersionTemplate[0].TemplateItems {
-				if v.Exc == "1" { // 不用管
-					if fnArr[1] != v.Item { // 此文件不作处理
-						continue
-					}
-
-					continueFlag = true
-					break
-				}
-
 				if v.Share == "1" { // 同时修改此目录下，前缀同名文件
 					if strings.Index(fnPathPrefix, v.Item) != 0 { // 不是此目录下的文件
 						continue
@@ -183,10 +223,10 @@ func main() {
 					if _, ok := shareMap[v.Item]; !ok {
 						shareMap[v.Item] = list.New()
 					}
-					list := shareMap[v.Item]
+					l := shareMap[v.Item]
 					// 如果list中 不包含fnPrefix，则添加到list中
-					if !utils.IsContain(list, fnPrefix) {
-						list.PushBack(fnPrefix)
+					if !utils.IsContain(l, fnPrefix) {
+						l.PushBack(fnPrefix)
 					}
 
 					continueFlag = true
@@ -194,16 +234,33 @@ func main() {
 				}
 
 				if v.Dir == "1" { // exclude文件版本号要跟着修改的版本号走
-					if strings.Index(fnPathPrefix, v.Item) != 0 { // 不是此目录下的文件
+					a := fnPathPrefix + "/"
+					if strings.Index(a, v.Item) < 0 { // 不是此目录下的文件
 						continue
 					}
 
-					dirMap[v.Item] = DirItem{fnPrefix, strings.Split(v.Item, ";")}
+					if fnPathPrefix[1:]+"/" == v.Item {
+						continue
+					}
+					if fnPathPrefix[:1] == "/" {
+						dirMap[fnPathPrefix[1:]+"/"] = DirItem{v.Item, strings.Split(v.Exclude, ";")}
+					} else {
+						dirMap[fnPathPrefix+"/"] = DirItem{v.Item, strings.Split(v.Exclude, ";")}
+					}
+					continueFlag = true
 					break
 				}
 			}
 			if continueFlag { // 此文件不作处理
 				continue
+			}
+
+			if !isNew {
+				if _, ok := increaseMap[fnPath]; ok { // 该文件是增量文件，不作处理
+					continue
+				}
+			} else {
+				increaseMap[fnPath] = true
 			}
 
 			// 拷贝文件到指定目录
@@ -222,12 +279,12 @@ func main() {
 	// 处理share标记的文件
 	fmt.Println("处理share标记的文件")
 	for k, v := range shareMap {
-		pathParent := cfg.ReadPath + "/" + k
+		pathParent := cfg.ReadPath + k
 		for e := v.Front(); e != nil; e = e.Next() {
 			fnPrefix := e.Value.(string)
 
 			//遍历path目录下的所有文件
-			filepath.Walk(pathParent, func(path string, f os.FileInfo, err error) error {
+			err := filepath.Walk(pathParent, func(path string, f os.FileInfo, err error) error {
 				if f == nil {
 					return err
 				}
@@ -239,8 +296,7 @@ func main() {
 				}
 
 				// 拷贝文件到指定目录
-				isNew := false
-				CopyFileTo(cfg, k, f.Name(), idStr, isNew)
+				CopyFileTo(cfg, k, f.Name(), idStr, false)
 
 				// 更新json中的版本号
 				key := k + f.Name()
@@ -254,28 +310,33 @@ func main() {
 
 				return nil
 			})
+			if err != nil {
+				ErrorLogger.Fatalf("处理dir标记的文件 error: %v", err)
+				return
+			}
 		}
 	}
 
 	// 处理dir标记的文件
 	fmt.Println("处理dir标记的文件")
 	for k, v := range dirMap {
-		path := cfg.ReadPath + "/" + k + "/"
-		fnPathPrefix := "/" + cfg.RootPath + "/" + k + "/"
+		parentPath := cfg.ReadPath + k
+		fnPathPrefix := "/" + k
 		//遍历path目录下的所有文件
-		filepath.Walk(path, func(path string, f os.FileInfo, err error) error {
+		err := filepath.Walk(parentPath, func(path string, f os.FileInfo, err error) error {
 			if f == nil {
 				return err
 			}
 			if f.IsDir() { // 忽略目录
 				return nil
 			}
-			if strings.Index(path, v.DirName) != 0 { // 不是此目录下的文件
+			tf := strings.ReplaceAll(path, "\\", "/")
+			if strings.Index(tf, fnPathPrefix) < 0 { // 不是此目录下的文件
 				return nil
 			}
 
 			// 拷贝文件到指定目录
-			CopyFileTo(cfg, fnPathPrefix, f.Name(), idStr, false)
+			CopyFileTo(cfg, fnPathPrefix[:len(fnPathPrefix)-1], f.Name(), idStr, false)
 
 			// 更新json中的版本号
 			key := fnPathPrefix + f.Name()
@@ -286,11 +347,24 @@ func main() {
 
 			return nil
 		})
+		if err != nil {
+			ErrorLogger.Fatalf("处理dir标记的文件 error: %v", err)
+			return
+		}
 
 		// 把exclude的文件拷贝到指定目录并更新json中的版本号
 		for _, excludeFile := range v.Excludes {
-			CopyFileTo(cfg, fnPathPrefix, excludeFile, idStr, false)
-			key := fnPathPrefix + excludeFile
+			if excludeFile == "" {
+				continue
+			}
+			var a string
+			if v.DirName[len(v.DirName)-1:] == "/" {
+				a = v.DirName[:len(v.DirName)-1]
+			} else {
+				a = v.DirName
+			}
+			CopyFileTo(cfg, a, excludeFile, idStr, false)
+			key := v.DirName + excludeFile
 			if key[0] == '/' {
 				key = key[1:]
 			}
@@ -301,6 +375,7 @@ func main() {
 		}
 	}
 
+	fmt.Println("共处理版本号：" + totalVersion)
 	// 更新并保存此次版本号
 	index, err := strconv.Atoi(versions.VersionItems[0].Index)
 	if err != nil {
@@ -312,18 +387,24 @@ func main() {
 	d := utils.VersionItem{Id: idStr, Version: endVersion, Time: timeStr, Index: indexStr, InitialVesion: cfg.InitialVesion}
 	//将d插入到第一个位置
 	versions.VersionItems = append([]utils.VersionItem{d}, versions.VersionItems...)
+	utils.SortVersionItems(&versions)
 
 	fmt.Println("保存些次版本Note文件...")
 	//保存此次版本号
 	utils.SaveVersionNoteCfg(&versions, cfg.VersionNote)
 	// 保存版本json数据
 	fmt.Println("保存版本json数据...")
-	utils.SaveJsonVersionFile(cfg.VesionPath, idStr+".json", verMap)
+	err = utils.SaveJsonVersionFile(cfg.VesionPath, idStr+".json", verMap)
+	if err != nil {
+		ErrorLogger.Fatalf("保存版本json数据 error: %v", err)
+	}
 	fmt.Println("done!")
 	// 输入任意键退出
-	fmt.Println("输入任意键退出...")
-	var input string
-	fmt.Scanln(&input)
+	myExit()
+}
+
+func main() {
+	start()
 }
 
 func exportSvnLog(cfg *utils.Item, startVersion int) (string, error) {
@@ -339,15 +420,26 @@ func exportSvnLog(cfg *utils.Item, startVersion int) (string, error) {
 }
 
 func CopyFileTo(cfg utils.Item, fnPathPrefix string, fn string, idStr string, isNew bool) {
-	srcPath := cfg.ReadPath + "/" + fnPathPrefix
+	if len(fnPathPrefix) > 0 && fnPathPrefix[0] == '/' {
+		fnPathPrefix = fnPathPrefix[1:]
+	}
+
+	readPath := cfg.ReadPath
+	if readPath[len(readPath)-1] == '\\' {
+		readPath = readPath[:len(readPath)-1]
+	}
+
+	srcPath := readPath + "/" + fnPathPrefix
 	// 默认路径目标目录rootPath
 	var targePath string
-	if !isNew { // 修改或替换文件，放进版本号目录
-		targePath = cfg.SavePath + idStr + fnPathPrefix
-		fmt.Printf("拷贝文件 %s 到 %s\n", fnPathPrefix+fn, idStr)
-	} else {
+	if isNew { // 修改或替换文件，放进版本号目录
 		targePath = cfg.SavePath + fnPathPrefix
-		fmt.Printf("新增文件 %s 到 %s\n", fnPathPrefix+fn, cfg.RootPath)
+		fmt.Printf("新增文件 %s 到 %s\n", fnPathPrefix+fn, readPath)
+		ErrorLogger.Println("新增文件: file=%v", fnPathPrefix+"/"+fn)
+	} else {
+		targePath = cfg.SavePath + idStr + "/" + fnPathPrefix
+		fmt.Printf("修改文件 %s 到 %s\n", fnPathPrefix+"/"+fn, idStr)
+		ErrorLogger.Println("修改文件: file=%v", fnPathPrefix+"/"+fn)
 	}
 	err := utils.CopyFile(srcPath, targePath, fn)
 	if err != nil {

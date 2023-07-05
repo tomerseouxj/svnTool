@@ -40,7 +40,7 @@ type TemplateItem struct {
 	Exc     string   `xml:"exc,attr"`
 	Share   string   `xml:"share,attr"`
 	Dir     string   `xml:"dir,attr"`
-	Exclude string   `xml:"extend,attr"`
+	Exclude string   `xml:"exclude,attr"`
 }
 
 func ReadCfg(cfg *Root) {

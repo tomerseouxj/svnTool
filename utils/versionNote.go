@@ -67,3 +67,21 @@ func SaveVersionNoteCfg(cfg *VersionRoot, path string) {
 		return
 	}
 }
+
+func SortVersionItems(cfg *VersionRoot) {
+	for i := 0; i < len(cfg.VersionItems); i++ {
+		for j := i; j < len(cfg.VersionItems); j++ {
+			a, err2 := strconv.Atoi(cfg.VersionItems[i].Index)
+			if err2 != nil {
+				CheckErr(err2)
+			}
+			b, err2 := strconv.Atoi(cfg.VersionItems[j].Index)
+			if err2 != nil {
+				CheckErr(err2)
+			}
+			if a < b {
+				cfg.VersionItems[i], cfg.VersionItems[j] = cfg.VersionItems[j], cfg.VersionItems[i]
+			}
+		}
+	}
+}

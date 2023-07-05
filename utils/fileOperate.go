@@ -1,6 +1,8 @@
 package utils
 
-import "os"
+import (
+	"os"
+)
 
 func CopyFile(src, dst, fn string) error {
 	// dst目录不存在则创建
@@ -10,16 +12,17 @@ func CopyFile(src, dst, fn string) error {
 			return err
 		}
 	}
+
 	// 拷贝文件到dist
-	srcFile, err := os.Open(src + "/" + fn)
+	srcFile, err := os.ReadFile(src + "/" + fn)
 	if err != nil {
 		return err
 	}
-	defer srcFile.Close()
-	dstFile, err := os.Create(dst + "/" + fn)
+
+	err = os.WriteFile(dst+"/"+fn, srcFile, 0666)
 	if err != nil {
 		return err
 	}
-	defer dstFile.Close()
+
 	return nil
 }

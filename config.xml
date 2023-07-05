@@ -11,7 +11,6 @@
 	svnEqualPath
 	initialVesion 基础版本号,没有往史版本,则以此版本为基础版本进行比较
 	-->
-
 	<platform>
 		<!--竖版h5-->
 		<item id="vH5_2.0" name="竖版h5[需要点击同步过渡服.bat文件才能打版本]">
@@ -55,13 +54,13 @@
 		<item exc='1'>libs/laya.physics3D.runtime.js</item>
 		<item exc='1'>libs/laya.ui.js</item>
 		<item exc='1'>libs/dexie.js</item>
-		
+
 		<item share="1">/res/movie/</item>
 		<item share="1">/res/movie/emotion/</item>
 		<item share="1">/res/nomovie/</item>
 		<item share="1">/res/atlas/view/</item>
 		<item share='1'>/res/sound/</item>
-		
+
 		<item dir='1'>libs/min/</item>
 		<item dir='1'>js/</item>
 		<item dir="1" exclude="maps.dba">res/map/</item>
