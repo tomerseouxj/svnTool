@@ -430,6 +430,10 @@ func CopyFileTo(cfg utils.Item, fnPathPrefix string, fn string, idStr string, is
 	}
 
 	srcPath := readPath + "/" + fnPathPrefix
+	if _, err := os.Stat(srcPath + "/" + fn); os.IsNotExist(err) { // 源文件不存在，忽略
+		WarningLogger.Println("源文件不存在 file=%s", srcPath+"/"+fn)
+		return
+	}
 	// 默认路径目标目录rootPath
 	var targePath string
 	if isNew { // 修改或替换文件，放进版本号目录
