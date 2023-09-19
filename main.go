@@ -11,6 +11,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"svnTool/template"
 	"svnTool/utils"
 	"time"
 )
@@ -38,6 +39,10 @@ func myExit() {
 	fmt.Scanln()
 }
 
+func main() {
+	start()
+}
+
 func start() {
 	defer func() {
 		err := recover()
@@ -56,24 +61,24 @@ func start() {
 	ErrorLogger = log.New(file, "ERROR: ", log.Ldate|log.Ltime|log.Lshortfile)
 
 	// 读取配置文件
-	data := utils.Root{}
-	utils.ReadCfg(&data)
-	fmt.Printf("读取配置成功 version: %v\n", data.Platforms[0].Items[0].InitialVesion)
+	cfgs := template.Root{}
+	template.ReadCfg(&cfgs)
+	fmt.Printf("读取配置成功 version: %v\n", cfgs.Platforms[0].Items[0].InitialVesion)
 
 	selectIdx := 1
-	if len(data.Platforms[0].Items) > 1 {
+	if len(cfgs.Platforms[0].Items) > 1 {
 		fmt.Printf("请选择要导出的版本：")
 		// 打印输出item列表，让用户选择
-		for i := 0; i < len(data.Platforms[0].Items); i++ {
-			fmt.Printf("%v. %v\n", i+1, data.Platforms[0].Items[i].Name)
+		for i := 0; i < len(cfgs.Platforms[0].Items); i++ {
+			fmt.Printf("%v. %v\n", i+1, cfgs.Platforms[0].Items[i].Name)
 		}
 		fmt.Scanln(&selectIdx)
-		if selectIdx < 1 || selectIdx > len(data.Platforms[0].Items) {
+		if selectIdx < 1 || selectIdx > len(cfgs.Platforms[0].Items) {
 			ErrorLogger.Fatalf("输入错误")
 		}
 	}
 
-	cfg := data.Platforms[0].Items[selectIdx-1]
+	cfg := cfgs.Platforms[0].Items[selectIdx-1]
 	//判断源目录是否存在
 	if _, err := os.Stat(cfg.ReadPath); os.IsNotExist(err) {
 		ErrorLogger.Fatalf("readPath路径不存在 '%s'", cfg.ReadPath)
@@ -87,21 +92,32 @@ func start() {
 		ErrorLogger.Fatalf("InitialVesionNote error: %v", err)
 	}
 	// 将versions根据index排序
-	lastVersionData := versions.VersionItems[0]
-	lastVersionId := lastVersionData.Id
-	lastVersion, err := strconv.Atoi(lastVersionData.Version)
-	if err != nil {
-		ErrorLogger.Fatalf("convert version error: %v", err)
-	}
-	if startVersion < lastVersion {
-		startVersion = lastVersion + 1
-	}
-	fmt.Printf("初始版本号：%v\n", startVersion)
+	var verMap map[string]string
+	var index = 0
+	if len(versions.VersionItems) == 0 {
+		verMap = make(map[string]string)
+	} else {
+		lastVersionData := versions.VersionItems[0]
+		lastVersionId := lastVersionData.Id
+		lastVersion, err := strconv.Atoi(lastVersionData.Version)
+		if err != nil {
+			ErrorLogger.Fatalf("convert version error: %v", err)
+		}
+		if startVersion < lastVersion {
+			startVersion = lastVersion + 1
+		}
+		fmt.Printf("初始版本号：%v\n", startVersion)
 
-	// 加载旧版本json数据
-	verMap, err := utils.ReadVersionFile(cfg.VesionPath, lastVersionId+".json")
-	if err != nil {
-		ErrorLogger.Fatalf("read version json error: %v", err)
+		index, err = strconv.Atoi(versions.VersionItems[0].Index)
+		if err != nil {
+			ErrorLogger.Fatalf("conv index error: %v", err)
+		}
+
+		// 加载旧版本json数据
+		verMap, err = utils.ReadVersionFile(cfg.VesionPath, lastVersionId+".json")
+		if err != nil {
+			ErrorLogger.Fatalf("read version json error: %v", err)
+		}
 	}
 
 	// 导出svn日志
@@ -147,7 +163,7 @@ func start() {
 		fmt.Printf("解析版本号：%v\n", svnXmlLog.Revision)
 		totalVersion += svnXmlLog.Revision + ","
 		for _, path := range svnXmlLog.Paths {
-			if path.Kind != "file" {
+			if path.Kind != "template" {
 				continue
 			}
 			fmt.Printf("开始处理文件：%v\n", path.Path)
@@ -169,7 +185,7 @@ func start() {
 
 			// 忽略文件
 			continueFlag := false
-			for _, v := range data.VersionTemplate[0].TemplateItems {
+			for _, v := range cfgs.VersionTemplate[0].TemplateItems {
 				if v.Exc == "1" {
 					if fnA == v.Item { // 此文件不作处理
 						continueFlag = true
@@ -213,7 +229,7 @@ func start() {
 			}
 
 			continueFlag = false
-			for _, v := range data.VersionTemplate[0].TemplateItems {
+			for _, v := range cfgs.VersionTemplate[0].TemplateItems {
 				if v.Share == "1" { // 同时修改此目录下，前缀同名文件
 					if strings.Index(fnPathPrefix, v.Item) != 0 { // 不是此目录下的文件
 						continue
@@ -377,10 +393,6 @@ func start() {
 
 	fmt.Println("共处理版本号：" + totalVersion)
 	// 更新并保存此次版本号
-	index, err := strconv.Atoi(versions.VersionItems[0].Index)
-	if err != nil {
-		ErrorLogger.Fatalf("conv index error: %v", err)
-	}
 	index++
 	indexStr := strconv.Itoa(index)
 	timeStr := now.Format("2006-01-02 15:04:00")
@@ -403,11 +415,7 @@ func start() {
 	myExit()
 }
 
-func main() {
-	start()
-}
-
-func exportSvnLog(cfg *utils.Item, startVersion int) (string, error) {
+func exportSvnLog(cfg *template.Item, startVersion int) (string, error) {
 	cmd := exec.Command("svn", "log", "-r", strconv.Itoa(startVersion)+":HEAD", "-v", cfg.SvnPath, "--xml")
 	var out bytes.Buffer
 	cmd.Stdout = &out
@@ -419,7 +427,7 @@ func exportSvnLog(cfg *utils.Item, startVersion int) (string, error) {
 	}
 }
 
-func CopyFileTo(cfg utils.Item, fnPathPrefix string, fn string, idStr string, isNew bool) {
+func CopyFileTo(cfg template.Item, fnPathPrefix string, fn string, idStr string, isNew bool) {
 	if len(fnPathPrefix) > 0 && fnPathPrefix[0] == '/' {
 		fnPathPrefix = fnPathPrefix[1:]
 	}
@@ -431,7 +439,7 @@ func CopyFileTo(cfg utils.Item, fnPathPrefix string, fn string, idStr string, is
 
 	srcPath := readPath + "/" + fnPathPrefix
 	if _, err := os.Stat(srcPath + "/" + fn); os.IsNotExist(err) { // 源文件不存在，忽略
-		WarningLogger.Println("源文件不存在 file=%s", srcPath+"/"+fn)
+		WarningLogger.Println("源文件不存在 template=%s", srcPath+"/"+fn)
 		return
 	}
 	// 默认路径目标目录rootPath
@@ -439,14 +447,14 @@ func CopyFileTo(cfg utils.Item, fnPathPrefix string, fn string, idStr string, is
 	if isNew { // 修改或替换文件，放进版本号目录
 		targePath = cfg.SavePath + fnPathPrefix
 		fmt.Printf("新增文件 %s 到 %s\n", fnPathPrefix+fn, readPath)
-		ErrorLogger.Println("新增文件: file=%v", fnPathPrefix+"/"+fn)
+		ErrorLogger.Println("新增文件: template=%v", fnPathPrefix+"/"+fn)
 	} else {
 		targePath = cfg.SavePath + idStr + "/" + fnPathPrefix
 		fmt.Printf("修改文件 %s 到 %s\n", fnPathPrefix+"/"+fn, idStr)
-		ErrorLogger.Println("修改文件: file=%v", fnPathPrefix+"/"+fn)
+		ErrorLogger.Println("修改文件: template=%v", fnPathPrefix+"/"+fn)
 	}
 	err := utils.CopyFile(srcPath, targePath, fn)
 	if err != nil {
-		ErrorLogger.Fatalf("拷贝失败: file=%v error=%v", fn, err)
+		ErrorLogger.Fatalf("拷贝失败: template=%v error=%v", fn, err)
 	}
 }
